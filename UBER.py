@@ -427,3 +427,6 @@ if __name__ == "__main__":
     auto_setup_database()
     app = App()
     app.mainloop()
+
+
+    print("hello world")
