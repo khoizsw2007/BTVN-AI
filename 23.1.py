@@ -1,0 +1,17 @@
+import folium
+m = folium.Map(location = [10.7610472,106.6681269], zoom_start = 15)
+lop_giao_duc = folium.FeatureGroup(name="Giáo dục")
+lop_mua_sam = folium.FeatureGroup(name="Mua sắm & Giải trí")
+lop_y_te = folium.FeatureGroup(name="Y tế")
+lop_hanh_chinh = folium.FeatureGroup(name="Hành chính")
+folium.Marker([10.7610472,106.6681269], popup = 'ĐẠI HỌC KINH TẾ THÀNH PHỐ HỒ CHÍ MINH CƠ SỞ B', tooltip = "Click vào").add_to(lop_giao_duc)
+folium.Marker([10.7761122,106.6781324], popup = 'VINCOM PLAZA', tooltip = "Click vào").add_to(lop_mua_sam)
+folium.Marker([10.758899,106.6600938], popup = 'BÊNH VIỆN CHỢ RẪY', tooltip = "Click vào").add_to(lop_y_te)
+folium.Marker([10.7689231,106.6677443], popup = 'TRUNG TÂM THƯƠNG MẠI VẠN HẠNH', tooltip = "Click vào").add_to(lop_mua_sam)
+folium.Marker([10.7679208,106.6625947], popup = 'UBND PHƯỜNG DIÊN HỒNG', tooltip = "Click vào").add_to(lop_hanh_chinh)
+lop_giao_duc.add_to(m)
+lop_mua_sam.add_to(m)
+lop_y_te.add_to(m)
+lop_hanh_chinh.add_to(m)
+folium.LayerControl().add_to(m)
+m
