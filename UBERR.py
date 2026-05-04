@@ -20,6 +20,7 @@ DB_CONFIG = {
     "database": "qlud"
 }
 
+
 def auto_setup_database():
     """Hàm tự động tạo Database, tạo Bảng và Import CSV siêu tốc"""
     print("⏳ Khởi động hệ thống RideHub...")
