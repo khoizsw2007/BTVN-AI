@@ -12,29 +12,31 @@ def get_db_connection():
     try: return mysql.connector.connect(**DB_CONFIG)
     except: return None
 
-def setup_admin_db():
+def setup_database():
     conn = get_db_connection()
     if not conn: return
     cursor = conn.cursor()
     
-    # [CẬP NHẬT] Xóa bảng cũ để reset lại toàn bộ tên thành Tiếng Anh
-    cursor.execute("DROP TABLE IF EXISTS admin_users")
-    
+    # Bảng Admin Users
     cursor.execute("""
-        CREATE TABLE admin_users (
+        CREATE TABLE IF NOT EXISTS admin_users (
             username VARCHAR(50) PRIMARY KEY,
             password VARCHAR(50) NOT NULL,
             full_name VARCHAR(100) NOT NULL,
             role VARCHAR(50) NOT NULL
         )
     """)
+    cursor.execute("SELECT COUNT(*) FROM admin_users")
+    if cursor.fetchone()[0] == 0:
+        users = [("admin", "admin123", "Admin", "Manager")]
+        for i in range(1, 4): users.append((f"sup{i}", "123456", f"Supervisor {i}", "Supervisor"))
+        for i in range(1, 11): users.append((f"head{i}", "123456", f"Department Head {i}", "Head"))
+        cursor.executemany("INSERT INTO admin_users VALUES (%s, %s, %s, %s)", users)
     
-    # Bơm dữ liệu 100% Tiếng Anh, chỉ giữ lại "Admin"
-    users = [("admin", "admin123", "Admin", "Manager")]
-    for i in range(1, 4): users.append((f"sup{i}", "123456", f"Supervisor {i}", "Supervisor"))
-    for i in range(1, 11): users.append((f"head{i}", "123456", f"Department Head {i}", "Head"))
+    # Bảng Flag và Suspend cho Module 3
+    cursor.execute("CREATE TABLE IF NOT EXISTS flagged_users (uid VARCHAR(100) PRIMARY KEY)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS suspended_users (uid VARCHAR(100) PRIMARY KEY)")
     
-    cursor.executemany("INSERT INTO admin_users VALUES (%s, %s, %s, %s)", users)
     conn.commit()
     conn.close()
 
@@ -274,6 +276,7 @@ class SettingsFrame(ctk.CTkFrame):
 
         ctk.CTkButton(popup, text="Save User", fg_color="#10B981", hover_color="#059669", width=280, height=40, font=("Arial", 12, "bold"), command=save).pack()
 
+
 # ================= 4. MAIN APP ROUTING =================
 class MainApp(ctk.CTk):
     def __init__(self, user):
@@ -286,7 +289,6 @@ class MainApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        # --- SIDEBAR ---
         self.sidebar = ctk.CTkFrame(self, width=280, fg_color="#FFFFFF", corner_radius=0, border_width=1, border_color="#E5E7EB")
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(8, weight=1)
@@ -316,13 +318,11 @@ class MainApp(ctk.CTk):
             btn.grid(row=i, column=0, sticky="ew", padx=15, pady=5)
             self.nav_buttons[key] = btn
 
-        # --- RIGHT AREA ---
         self.right_area = ctk.CTkFrame(self, fg_color="transparent")
         self.right_area.grid(row=0, column=1, sticky="nsew")
         self.right_area.grid_rowconfigure(1, weight=1)
         self.right_area.grid_columnconfigure(0, weight=1)
 
-        # TOPBAR
         self.topbar = ctk.CTkFrame(self.right_area, height=70, fg_color="#FFFFFF", corner_radius=0, border_width=1, border_color="#E5E7EB")
         self.topbar.grid(row=0, column=0, sticky="ew")
         
@@ -335,7 +335,6 @@ class MainApp(ctk.CTk):
                                       command=self.toggle_user_menu)
         self.user_btn.pack(side="left")
 
-        # --- INIT FRAMES ---
         self.frames = {
             "Profiles": UserProfileFrame(self.right_area), 
             "Settings": SettingsFrame(self.right_area, self.current_user)
@@ -397,16 +396,13 @@ class MainApp(ctk.CTk):
         self.current_frame = self.frames[frame_name]
         self.current_frame.grid(row=1, column=0, sticky="nsew", padx=25, pady=25)
 
+
 # ================= 5. USER PROFILE FRAME =================
 class UserProfileFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
         self.current_limit = 30
         self.max_display_limit = 100
-        self.tooltip_window = None
-        self.tooltip_timer = None
-        
-        self.setup_flag_table()
 
         control_panel = ctk.CTkFrame(self, fg_color="#FFFFFF", corner_radius=12, border_width=1, border_color="#E5E7EB")
         control_panel.pack(fill="x", pady=(0, 20))
@@ -431,7 +427,7 @@ class UserProfileFrame(ctk.CTkFrame):
         self.search_entry.bind("<KeyRelease>", lambda e: self.reset_and_refresh())
 
         bottom_controls = ctk.CTkFrame(control_panel, fg_color="transparent")
-        bottom_controls.pack(fill="x", padx=15, pady=(5, 5))
+        bottom_controls.pack(fill="x", padx=15, pady=(5, 15))
 
         cb_kwargs = {"text_color": "#111827", "font": ("Arial", 12, "bold"), "fg_color": "#F3F4F6", 
                      "button_color": "#F3F4F6", "button_hover_color": "#E5E7EB", "border_width": 0, "corner_radius": 6,
@@ -455,16 +451,6 @@ class UserProfileFrame(ctk.CTkFrame):
         ctk.CTkButton(bottom_controls, text="🔄 Clear Filters", fg_color="#F3F4F6", hover_color="#E5E7EB", border_width=0,
                       text_color="#4B5563", font=("Arial", 12, "bold"), height=30, corner_radius=6, command=self.clear_filters).grid(row=0, column=3, padx=(5, 0), sticky="ew")
 
-        legend_frame = ctk.CTkFrame(control_panel, fg_color="transparent")
-        legend_frame.pack(fill="x", padx=15, pady=(0, 15))
-        
-        ctk.CTkLabel(legend_frame, text="💡 Status Legend: ", font=("Arial", 11, "bold"), text_color="#111827").pack(side="left")
-        ctk.CTkLabel(legend_frame, text="🔴 High Risk (≥ 40%)", font=("Arial", 11, "bold"), text_color="#EF4444").pack(side="left", padx=(5, 0))
-        ctk.CTkLabel(legend_frame, text="   |   ", font=("Arial", 11), text_color="#D1D5DB").pack(side="left")
-        ctk.CTkLabel(legend_frame, text="🟠 Warning (20% - 39%)", font=("Arial", 11, "bold"), text_color="#F59E0B").pack(side="left")
-        ctk.CTkLabel(legend_frame, text="   |   ", font=("Arial", 11), text_color="#D1D5DB").pack(side="left")
-        ctk.CTkLabel(legend_frame, text="🟢 Safe (< 20%)", font=("Arial", 11, "bold"), text_color="#10B981").pack(side="left")
-
         self.main_container = ctk.CTkFrame(self, fg_color="transparent")
         self.main_container.pack(fill="both", expand=True)
         self.main_container.grid_columnconfigure(1, weight=1)
@@ -486,14 +472,6 @@ class UserProfileFrame(ctk.CTkFrame):
         
         self.refresh_list()
 
-    def setup_flag_table(self):
-        conn = get_db_connection()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute("CREATE TABLE IF NOT EXISTS flagged_users (uid VARCHAR(100) PRIMARY KEY)")
-            conn.commit()
-            conn.close()
-
     def toggle_flag(self, uid):
         conn = get_db_connection()
         if not conn: return
@@ -501,6 +479,18 @@ class UserProfileFrame(ctk.CTkFrame):
         cursor.execute("SELECT * FROM flagged_users WHERE uid = %s", (uid,))
         if cursor.fetchone(): cursor.execute("DELETE FROM flagged_users WHERE uid = %s", (uid,))
         else: cursor.execute("INSERT INTO flagged_users (uid) VALUES (%s)", (uid,))
+        conn.commit()
+        conn.close()
+        self.refresh_list()
+        self.display_detail(uid, self.user_type_var.get())
+
+    def toggle_suspend(self, uid):
+        conn = get_db_connection()
+        if not conn: return
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM suspended_users WHERE uid = %s", (uid,))
+        if cursor.fetchone(): cursor.execute("DELETE FROM suspended_users WHERE uid = %s", (uid,))
+        else: cursor.execute("INSERT INTO suspended_users (uid) VALUES (%s)", (uid,))
         conn.commit()
         conn.close()
         self.refresh_list()
@@ -514,6 +504,12 @@ class UserProfileFrame(ctk.CTkFrame):
         self.reset_and_refresh()
 
     def reset_and_refresh(self, *args):
+        if self.user_type_var.get() == "Customers":
+            self.risk_filter.set("All Statuses")
+            self.risk_filter.configure(state="disabled")
+        else:
+            self.risk_filter.configure(state="readonly")
+            
         self.current_limit = 30
         self.refresh_list()
 
@@ -525,7 +521,6 @@ class UserProfileFrame(ctk.CTkFrame):
     def refresh_list(self):
         user_type = self.user_type_var.get()
         for widget in self.scroll_list.winfo_children(): widget.destroy()
-        self.cancel_tooltip()
 
         conn = get_db_connection()
         if not conn: return
@@ -539,6 +534,9 @@ class UserProfileFrame(ctk.CTkFrame):
 
         cursor.execute("SELECT uid FROM flagged_users")
         flagged_set = {row['uid'] for row in cursor.fetchall()}
+        
+        cursor.execute("SELECT uid FROM suspended_users")
+        suspended_set = {row['uid'] for row in cursor.fetchall()}
 
         where_clauses = [f"`{id_col}` IS NOT NULL", f"`{id_col}` NOT IN ('', 'None', 'NaN', '0', 'Unassigned')"]
         params = []
@@ -559,10 +557,11 @@ class UserProfileFrame(ctk.CTkFrame):
         elif "5" in self.trip_filter.get(): having_clauses.append("COUNT(*) > 5")
         elif "3" in self.trip_filter.get(): having_clauses.append("COUNT(*) > 3")
 
-        risk = self.risk_filter.get()
-        if "High Risk" in risk: having_clauses.append(f"{cancel_rate_expr} >= 40")
-        elif "Warning" in risk: having_clauses.append(f"{cancel_rate_expr} >= 20 AND {cancel_rate_expr} < 40")
-        elif "Safe" in risk: having_clauses.append(f"{cancel_rate_expr} < 20")
+        if user_type == "Drivers":
+            risk = self.risk_filter.get()
+            if "High Risk" in risk: having_clauses.append(f"{cancel_rate_expr} >= 40")
+            elif "Warning" in risk: having_clauses.append(f"{cancel_rate_expr} >= 20 AND {cancel_rate_expr} < 40")
+            elif "Safe" in risk: having_clauses.append(f"{cancel_rate_expr} < 20")
 
         if having_clauses: query += " HAVING " + " AND ".join(having_clauses)
         query += f" ORDER BY total_trips DESC LIMIT {self.current_limit + 1}"
@@ -580,25 +579,34 @@ class UserProfileFrame(ctk.CTkFrame):
             for user in display_rows:
                 uid, stars, trips, c_rate = user['uid'], user['avg_rate'] or 0, user['total_trips'], float(user['cancel_rate'])
                 is_flagged = uid in flagged_set
+                is_suspended = uid in suspended_set
                 
                 item_frame = ctk.CTkFrame(self.scroll_list, fg_color="#F9FAFB", corner_radius=8, height=65)
                 item_frame.pack(fill="x", pady=4, padx=5)
                 item_frame.pack_propagate(False)
                 
-                alert_text = "🔴" if c_rate >= 40 else ("🟠" if c_rate >= 20 else "👤")
-                val_color = "#EF4444" if c_rate >= 40 else ("#F59E0B" if c_rate >= 20 else "#111827")
+                if user_type == "Drivers":
+                    alert_text = "🔴" if c_rate >= 40 else ("🟠" if c_rate >= 20 else "👤")
+                    val_color = "#EF4444" if c_rate >= 40 else ("#F59E0B" if c_rate >= 20 else "#111827")
+                    stats_text = f"⭐ {stars:.1f}  |  🏁 {trips}  |  🚫 {c_rate:.0f}%"
+                else:
+                    alert_text = "👤"
+                    val_color = "#111827"
+                    stats_text = f"⭐ {stars:.1f}  |  🏁 {trips} Trips"
 
                 ctk.CTkLabel(item_frame, text=alert_text, font=("Arial", 18)).place(x=15, y=18)
                 ctk.CTkLabel(item_frame, text=uid, font=("Arial", 13, "bold"), text_color=val_color).place(x=50, y=10)
-                ctk.CTkLabel(item_frame, text=f"⭐ {stars:.1f}  |  🏁 {trips}  |  🚫 {c_rate:.0f}%", font=("Arial", 11), text_color="#6B7280").place(x=50, y=32)
+                ctk.CTkLabel(item_frame, text=stats_text, font=("Arial", 11), text_color="#6B7280").place(x=50, y=32)
 
+                icon_x = 0.88
+                if is_suspended:
+                    ctk.CTkLabel(item_frame, text="⛔", font=("Arial", 14)).place(relx=icon_x, y=10)
+                    icon_x -= 0.1
                 if is_flagged:
-                    ctk.CTkLabel(item_frame, text="📌", font=("Arial", 14)).place(relx=0.88, y=10)
+                    ctk.CTkLabel(item_frame, text="📌", font=("Arial", 14)).place(relx=icon_x, y=10)
 
                 for w in [item_frame] + item_frame.winfo_children():
                     w.bind("<Button-1>", lambda e, u=uid: self.display_detail(u, user_type))
-                    w.bind("<Enter>", lambda e, u=uid, s=stars, t=trips, c=c_rate, f=is_flagged: self.schedule_tooltip(e, u, s, t, c, f))
-                    w.bind("<Leave>", self.cancel_tooltip)
 
             if has_more_in_db:
                 if self.current_limit < self.max_display_limit:
@@ -607,32 +615,6 @@ class UserProfileFrame(ctk.CTkFrame):
                     ctk.CTkButton(self.scroll_list, text="Limit Reached (100)", fg_color="#FEE2E2", text_color="#EF4444", hover_color="#FECACA", corner_radius=8, command=lambda: messagebox.showinfo("Info", "Use filters to narrow down.")).pack(pady=10, fill="x")
             
             self.display_detail(display_rows[0]['uid'], user_type)
-
-    def schedule_tooltip(self, event, uid, stars, trips, cancel_rate, is_flagged):
-        self.cancel_tooltip()
-        self.tooltip_timer = self.after(300, lambda: self.show_tooltip(event.x_root, event.y_root, uid, stars, trips, cancel_rate, is_flagged))
-
-    def show_tooltip(self, x, y, uid, stars, trips, cancel_rate, is_flagged):
-        self.cancel_tooltip()
-        self.tooltip_window = ctk.CTkToplevel(self)
-        self.tooltip_window.wm_overrideredirect(True)
-        self.tooltip_window.attributes("-topmost", True)
-        self.tooltip_window.geometry(f"+{x+15}+{y+15}")
-        
-        frame = ctk.CTkFrame(self.tooltip_window, fg_color="#111827", corner_radius=8)
-        frame.pack(fill="both", expand=True)
-        
-        flag_text = "📌 FLAGGED\n" if is_flagged else ""
-        c_color = "#EF4444" if cancel_rate >= 40 else ("#F59E0B" if cancel_rate >= 20 else "#10B981")
-
-        ctk.CTkLabel(frame, text=f"{flag_text}ID: {uid}", font=("Arial", 12, "bold"), text_color="#FFFFFF").pack(padx=12, pady=(8,2), anchor="w")
-        ctk.CTkLabel(frame, text=f"⭐ Avg Rating: {stars:.1f}", font=("Arial", 11), text_color="#D1D5DB").pack(padx=12, anchor="w")
-        ctk.CTkLabel(frame, text=f"🏁 Total Trips: {trips}", font=("Arial", 11), text_color="#D1D5DB").pack(padx=12, anchor="w")
-        ctk.CTkLabel(frame, text=f"🚫 Cancel Rate: {cancel_rate:.1f}%", font=("Arial", 11, "bold"), text_color=c_color).pack(padx=12, pady=(0,8), anchor="w")
-
-    def cancel_tooltip(self, event=None):
-        if self.tooltip_timer: self.after_cancel(self.tooltip_timer); self.tooltip_timer = None
-        if self.tooltip_window: self.tooltip_window.destroy(); self.tooltip_window = None
 
     def display_detail(self, uid, user_type):
         for widget in self.right_side.winfo_children(): widget.destroy()
@@ -643,15 +625,21 @@ class UserProfileFrame(ctk.CTkFrame):
         rate_col = "Driver Ratings" if user_type == "Drivers" else "Customer Rating"
         cancel_col = "Cancelled Rides by Driver" if user_type == "Drivers" else "Cancelled Rides by Customer"
         
+        history_rating_col = "Customer Rating" if user_type == "Drivers" else "Driver Ratings"
+
         cancel_rate_expr = f"COALESCE((SUM(`{cancel_col}`) / NULLIF(SUM(CASE WHEN `Booking Status` != 'No Driver Found' THEN 1 ELSE 0 END), 0)) * 100, 0)"
         cursor.execute(f"SELECT AVG(`{rate_col}`) as avg_rate, COUNT(*) as total_trips, SUM(`Booking Value`) as total_val, {cancel_rate_expr} as cancel_rate FROM rides WHERE `{id_col}` = %s", (uid,))
         stats = cursor.fetchone()
         
-        cursor.execute(f"SELECT `Booking ID`, `Date`, `Booking Value`, `Booking Status` FROM rides WHERE `{id_col}` = %s ORDER BY `Date` DESC LIMIT 5", (uid,))
+        cursor.execute(f"SELECT `Booking ID`, `Date`, `Booking Value`, `Booking Status`, `{history_rating_col}` as trip_rating FROM rides WHERE `{id_col}` = %s ORDER BY `Date` DESC LIMIT 5", (uid,))
         history = cursor.fetchall()
         
         cursor.execute("SELECT * FROM flagged_users WHERE uid = %s", (uid,))
         is_flagged = cursor.fetchone() is not None
+        
+        cursor.execute("SELECT * FROM suspended_users WHERE uid = %s", (uid,))
+        is_suspended = cursor.fetchone() is not None
+        
         conn.close()
 
         c_rate = float(stats['cancel_rate'])
@@ -670,34 +658,48 @@ class UserProfileFrame(ctk.CTkFrame):
         badge_container = ctk.CTkFrame(header_card, fg_color="transparent")
         badge_container.place(x=info_x, y=68)
 
-        ctk.CTkLabel(badge_container, text="● Active", font=("Arial", 11, "bold"), text_color="#FFFFFF", fg_color="#34D399", corner_radius=10, padx=10, pady=3).pack(side="left", padx=(0, 10))
+        status_text = "Suspended" if is_suspended else "Active"
+        status_color = "#EF4444" if is_suspended else "#34D399"
+        ctk.CTkLabel(badge_container, text=f"● {status_text}", font=("Arial", 11, "bold"), text_color="#FFFFFF", fg_color=status_color, corner_radius=10, padx=10, pady=3).pack(side="left", padx=(0, 10))
+        
         ctk.CTkLabel(badge_container, text=user_type[:-1], font=("Arial", 11, "bold"), text_color=bg_color, fg_color="#FFFFFF", corner_radius=10, padx=10, pady=3).pack(side="left", padx=(0, 10))
 
         if is_flagged:
             ctk.CTkLabel(badge_container, text="📌 Flagged", font=("Arial", 11, "bold"), text_color="#FFFFFF", fg_color="#F59E0B", corner_radius=10, padx=10, pady=3).pack(side="left")
 
-        risk_text = "🚨 High Cancel Rate!" if c_rate >= 40 else ("⚠️ Needs Monitoring" if c_rate >= 20 else "✅ Safe Profile")
-        ctk.CTkLabel(header_card, text=f"Status: {risk_text}", font=("Arial", 13), text_color="#E0E7FF").place(x=info_x, y=105)
+        if user_type == "Drivers":
+            risk_text = "🚨 High Cancel Rate!" if c_rate >= 40 else ("⚠️ Needs Monitoring" if c_rate >= 20 else "✅ Safe Profile")
+            ctk.CTkLabel(header_card, text=f"Status: {risk_text}", font=("Arial", 13), text_color="#E0E7FF").place(x=info_x, y=105)
 
         btn_flag = ctk.CTkButton(header_card, text="Unflag" if is_flagged else "📌 Flag", 
-                                 fg_color="#FFFFFF", text_color="#EF4444" if is_flagged else bg_color, 
-                                 hover_color="#F3F4F6", font=("Arial", 12, "bold"), width=120,
+                                 fg_color="#FFFFFF", text_color="#F59E0B" if is_flagged else bg_color, 
+                                 hover_color="#F3F4F6", font=("Arial", 12, "bold"), width=110,
                                  command=lambda u=uid: self.toggle_flag(u))
-        btn_flag.place(relx=0.96, rely=0.5, anchor="e")
+        btn_flag.place(relx=0.96, rely=0.3, anchor="e")
+
+        if user_type == "Drivers":
+            btn_suspend = ctk.CTkButton(header_card, text="Unsuspend" if is_suspended else "⛔ Suspend", 
+                                     fg_color="#EF4444" if not is_suspended else "#FFFFFF", 
+                                     text_color="#FFFFFF" if not is_suspended else "#EF4444",
+                                     hover_color="#DC2626", font=("Arial", 12, "bold"), width=110,
+                                     command=lambda u=uid: self.toggle_suspend(u))
+            btn_suspend.place(relx=0.96, rely=0.7, anchor="e")
 
         stats_frame = ctk.CTkFrame(self.right_side, fg_color="transparent")
         stats_frame.pack(fill="x", pady=(0, 20))
         stats_frame.grid_columnconfigure((0,1,2,3), weight=1)
 
         self.create_stat_card(stats_frame, "Total Trips", f"{stats['total_trips']}", "🚗", 0)
-        self.create_stat_card(stats_frame, "Revenue", f"₹{stats['total_val'] or 0:,.0f}", "💰", 1)
-        self.create_stat_card(stats_frame, "Cancel Rate", f"{c_rate:.1f}%", "🚫", 2, is_danger=(c_rate >= 20))
-        self.create_stat_card(stats_frame, "Avg Rating", f"{stats['avg_rate']:.1f} ⭐" if stats['avg_rate'] else "N/A", "⭐", 3)
+        self.create_stat_card(stats_frame, "Total Spent" if user_type == "Customers" else "Revenue", f"₹{stats['total_val'] or 0:,.0f}", "💰", 1)
+        self.create_stat_card(stats_frame, "Avg Rating", f"{stats['avg_rate']:.1f} ⭐" if stats['avg_rate'] else "N/A", "⭐", 2)
+        
+        if user_type == "Drivers":
+            self.create_stat_card(stats_frame, "Cancel Rate", f"{c_rate:.1f}%", "🚫", 3, is_danger=(c_rate >= 20))
 
         table_container = ctk.CTkFrame(self.right_side, fg_color="#FFFFFF", corner_radius=12, border_width=1, border_color="#E5E7EB")
         table_container.pack(fill="both", expand=True)
         
-        ctk.CTkLabel(table_container, text="Ride History", font=("Arial", 16, "bold"), text_color="#111827").pack(anchor="w", padx=20, pady=(15, 5))
+        ctk.CTkLabel(table_container, text="Ride History (5 Recent)", font=("Arial", 16, "bold"), text_color="#111827").pack(anchor="w", padx=20, pady=(15, 5))
 
         style = ttk.Style()
         style.theme_use("clam")
@@ -705,14 +707,15 @@ class UserProfileFrame(ctk.CTkFrame):
         style.configure("Treeview.Heading", background="#F9FAFB", foreground="#6B7280", borderwidth=0, font=('Arial', 11, 'bold'))
         style.map("Treeview", background=[("selected", "#EEF2FF")], foreground=[("selected", "#4F46E5")])
 
-        table = ttk.Treeview(table_container, columns=("ID", "Date", "Price", "Status"), show="headings", height=5)
+        table = ttk.Treeview(table_container, columns=("ID", "Date", "Price", "Status", "Rating"), show="headings", height=5)
         for col in table["columns"]: 
             table.heading(col, text=col.upper())
-            table.column(col, width=150, anchor="center")
+            table.column(col, width=150 if col == "ID" else 100, anchor="center")
         table.pack(fill="both", expand=True, padx=2, pady=(0, 10))
         
         for trip in history: 
-            table.insert("", "end", values=(trip['Booking ID'], trip['Date'], f"₹{trip['Booking Value']}", trip['Booking Status']))
+            r_str = f"{trip['trip_rating']} ⭐" if trip['trip_rating'] else "N/A"
+            table.insert("", "end", values=(trip['Booking ID'], trip['Date'], f"₹{trip['Booking Value']}", trip['Booking Status'], r_str))
 
     def create_stat_card(self, parent, title, val, icon, col, is_danger=False):
         card = ctk.CTkFrame(parent, fg_color="#FFFFFF", corner_radius=12, border_width=1, border_color="#E5E7EB", height=100)
@@ -732,7 +735,8 @@ class UserProfileFrame(ctk.CTkFrame):
         val_color = "#EF4444" if is_danger else "#111827"
         ctk.CTkLabel(text_frame, text=val, font=("Arial", 22, "bold"), text_color=val_color).pack(anchor="w", pady=(2, 0))
 
+
 if __name__ == "__main__":
-    setup_admin_db()
+    setup_database()
     app = LoginWindow()
     app.mainloop()
