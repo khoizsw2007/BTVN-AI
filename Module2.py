@@ -607,66 +607,149 @@ class RideManagementFrame(ctk.CTkFrame):
     # ==========================================
     # F2 - RISK TAG: NHÃN RỦI RO TỰ ĐỘNG
     # ==========================================
-
-    # ==========================================
-    # F3 - TRIP STORY: TÁI HIỆN HÀNH TRÌNH
+# ==========================================
+    # F3 - TRIP STORY: BẢN HOÀN THIỆN (MULTIPLE TAGS + ALIGN CARDS)
     # ==========================================
     def f3_show_trip_story(self, item_id=None):
-        """
-        Dựng lại dòng thời gian của chuyến đi khi người dùng click vào biểu tượng 👁
-        [CẬP NHẬT]: Index đã được điều chỉnh do thêm cột Checkbox ở đầu và xóa cột Risk Tag.
-        """
-        # Nếu không có item_id (không click trúng dòng nào) thì dừng hàm
+        """Tái hiện hành trình chi tiết, đa thẻ rủi ro, thời gian gộp vào thẻ 1 để align khung."""
+        import re
+        import datetime
         if not item_id: return
         
-        # Lấy toàn bộ dữ liệu của dòng được click
-        item = self.table.item(item_id)['values']
+        # 1. Lấy Booking ID từ bảng
+        item_table = self.table.item(item_id)['values']
+        booking_id_raw = str(item_table[1]).replace("#", "") 
         
-        # Khởi tạo cửa sổ popup hiển thị Timeline
+        # 2. Truy vấn Database để lấy toàn bộ dữ liệu gốc
+        conn = get_db_connection()
+        row = None
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM rides WHERE `Booking ID` = %s", (booking_id_raw,))
+            row = cursor.fetchone()
+            conn.close()
+        
+        if not row: return
+
+        # Khởi tạo cửa sổ phụ
         win = ctk.CTkToplevel(self)
-        win.title("Trip Story Timeline")
-        win.geometry("500x550")
+        win.title(f"Trip Journey - {item_table[1]}")
+        win.geometry("550")
+        win.configure(fg_color="#f8fafc") 
+        win.attributes('-topmost', True)
+
+        # =========================================================
+        # PHẦN HEADER: HIỂN THỊ ĐA THẺ RỦI RO (MULTIPLE TAGS)
+        # =========================================================
+        header_f = ctk.CTkFrame(win, fg_color="transparent")
+        header_f.pack(fill="x", padx=30, pady=(25, 15))
         
-        # Tiêu đề của cửa sổ - Lấy Booking ID ở vị trí item[1] (vì item[0] đang là ô Checkbox)
-        ctk.CTkLabel(win, text=f"Timeline Chuyến {item[1]}", font=("Arial", 18, "bold"), text_color="#0f172a").pack(pady=(20, 10))
+        # Khung chứa các Badges
+        badge_f = ctk.CTkFrame(header_f, fg_color="transparent")
+        badge_f.pack(anchor="w")
         
-        # Dựng Layout Timeline mô phỏng (Khung chứa các bước thời gian)
-        timeline_f = ctk.CTkFrame(win, fg_color="transparent")
-        timeline_f.pack(fill="x", padx=40, pady=10)
+        # Tag ID mặc định
+        id_tag = ctk.CTkFrame(badge_f, fg_color="#eff6ff", corner_radius=6, border_width=1, border_color="#bfdbfe")
+        id_tag.pack(side="left")
+        ctk.CTkLabel(id_tag, text=f"#{row.get('Booking ID', '')}", font=("Arial", 11, "bold"), text_color="#2563eb").pack(padx=8, pady=2)
         
-        # Các bước trong dòng thời gian bằng tiếng Anh
+        # Logic tính toán và hiển thị TẤT CẢ các rủi ro thỏa mãn
+        price_val = float(row.get('Booking Value', 0)) if row.get('Booking Value') else 0.0
+        vtat_val = float(row.get('Avg VTAT', 0)) if row.get('Avg VTAT') else 0.0
+        status_raw = str(row.get('Booking Status', ''))
+
+        # Danh sách các thẻ rủi ro sẽ hiển thị
+        risks = []
+        if price_val > 600:
+            risks.append(("• VIP Trip", "#fef9c3", "#fde047", "#854d0e")) # Vàng
+        if vtat_val > 12 and "Cancel" in status_raw:
+            risks.append(("• Long Wait", "#fecaca", "#fca5a5", "#b91c1c")) # Đỏ
+        if vtat_val > 15:
+            risks.append(("• High VTAT", "#fed7aa", "#fdba74", "#c2410c")) # Cam
+        if "Incomplete" in status_raw:
+            risks.append(("• Incident", "#f1f5f9", "#cbd5e1", "#334155")) # Xám
+
+        # Vẽ từng thẻ rủi ro nếu có
+        for text, bg, border, txt_color in risks:
+            r_tag = ctk.CTkFrame(badge_f, fg_color=bg, corner_radius=12, border_width=1, border_color=border)
+            r_tag.pack(side="left", padx=(10, 0))
+            ctk.CTkLabel(r_tag, text=text, font=("Arial", 11, "bold"), text_color=txt_color).pack(padx=10, pady=2)
+
+        # Tiêu đề và thông tin phụ
+        ctk.CTkLabel(header_f, text="Trip Story Timeline", font=("Arial", 22, "bold"), text_color="#1e293b").pack(anchor="w", pady=(10, 2))
+        subtitle = f"{row.get('Date', '')}  •  {row.get('Pickup Location', '')} ➔ {row.get('Drop Location', '')}"
+        ctk.CTkLabel(header_f, text=subtitle, font=("Arial", 13), text_color="#94a3b8").pack(anchor="w")
+
+        # =========================================================
+        # PHẦN THÂN: TIMELINE CARD
+        # =========================================================
+        body_f = ctk.CTkFrame(win, fg_color="transparent")
+        body_f.pack(fill="both", expand=True, padx=30)
+
+        # Lấy giờ ở đây luôn để nhét vào khung đầu tiên
+        time_str = str(row.get('Time', ''))[:5] if row.get('Time') else ""
+
         steps = [
-            ("Booking Confirmed", f"System received booking. Requested vehicle: {item[4]}"),
-            (f"Wait Time: {item[6]}", "Driver is heading to pickup location."),
-            ("Trip Started", f"Route: {item[3]}"),
-            ("Trip Finished / Cancelled", f"Status: {item[7]} | Total Price: {item[5]}")
+            {"title": "Booking Confirmed", "desc": f"Via app • Payment: {row.get('Payment Method', 'N/A')} • Time: {time_str}", "icon": "✓", "color": "#10b981"},
+            {"title": "Driver Assigned", "desc": f"Driver ID: {str(row.get('Customer ID', ''))} • Vehicle: {row.get('Vehicle Type', '')}", "icon": "🚗", "color": "#3b82f6"},
+            {"title": f"Wait Time • VTAT: {int(vtat_val)} min", "desc": "Driver is approaching pickup point.", "icon": "⏳", "color": "#f59e0b" if vtat_val > 8 else "#3b82f6"},
+            {"title": "Trip Started", "desc": f"{row.get('Pickup Location', '')} ➔ {row.get('Drop Location', '')} ({row.get('Ride Distance', 0)} km)", "icon": "📍", "color": "#6366f1"},
         ]
         
-        # Vòng lặp để vẽ giao diện cho từng bước (từng step) trong mảng steps ở trên
-        for title, desc in steps:
-            # Vẽ 1 cái khung trắng, bo góc cho mỗi bước
-            step_f = ctk.CTkFrame(timeline_f, fg_color="white", corner_radius=8, border_width=1, border_color="#e2e8f0")
-            step_f.pack(fill="x", pady=5)
-            # In Tiêu đề bước (Màu xanh, in đậm)
-            ctk.CTkLabel(step_f, text=title, font=("Arial", 13, "bold"), text_color="#2563eb").pack(anchor="w", padx=10, pady=(5,0))
-            # In Mô tả chi tiết của bước (Màu xám)
-            ctk.CTkLabel(step_f, text=desc, text_color="#64748b").pack(anchor="w", padx=10, pady=(0,5))
-            
-        # Logic Auto-comment thông minh (Không dùng AI)
-        # Lấy giá trị VTAT (item[6]), dùng lệnh replace để xóa chữ 'm', sau đó ép sang số thực (float) để so sánh
-        vtat_val = float(str(item[6]).replace('m', ''))
-        
-        # Dịch câu nhận xét tự động sang tiếng Anh
-        if vtat_val > 10:
-            comment = f"Wait time ({vtat_val} mins) exceeds system average. This is a major risk for poor experience or cancellation."
+        if "Completed" in status_raw:
+            steps.append({"title": "Trip Finished", "desc": f"Completed {row.get('Ride Distance', 0)}km • Price: ${int(price_val)} • Rating: {row.get('Customer Rating', 0)}★", "icon": "✓", "color": "#10b981"})
         else:
-            comment = "Operational metrics (wait time, vehicle) are within safe limits."
-                        
-        # Hiển thị phần kết luận của hệ thống ở góc dưới cùng
-        ctk.CTkLabel(win, text="SYSTEM AUTO-COMMENT", font=("Arial", 12, "bold"), text_color="#9333ea").pack(pady=(20, 5))
-        ctk.CTkLabel(win, text=comment, wraplength=400, text_color="#475569").pack()
+            steps.append({"title": "Trip Interrupted", "desc": f"Status: {status_raw} • Distance: {row.get('Ride Distance', 0)}km", "icon": "✕", "color": "#ef4444"})
 
-    # ==========================================
+        for i, step in enumerate(steps):
+            item_f = ctk.CTkFrame(body_f, fg_color="transparent")
+            item_f.pack(fill="x", pady=10)
+            
+            icon_f = ctk.CTkFrame(item_f, fg_color="transparent", width=40)
+            icon_f.pack(side="left", fill="y")
+            
+            circle = ctk.CTkFrame(icon_f, width=32, height=32, corner_radius=16, fg_color="white", border_width=2, border_color=step['color'])
+            circle.pack(pady=(0, 0))
+            circle.pack_propagate(False)
+            ctk.CTkLabel(circle, text=step['icon'], font=("Arial", 14, "bold"), text_color=step['color']).place(relx=0.5, rely=0.5, anchor="center")
+
+            # Khung Card sẽ bung ra tận cùng bên phải do không còn cái time_label nào cản đường
+            card = ctk.CTkFrame(item_f, fg_color="white", corner_radius=10, border_width=1, border_color="#e2e8f0")
+            card.pack(side="left", fill="x", expand=True, padx=(15, 0))
+            
+            if i == 2 and vtat_val > 8:
+                card.configure(border_color="#fde68a", fg_color="#fffbeb") 
+                ctk.CTkLabel(card, text=f"⚠️ High wait detected! Driver arrived {int(vtat_val)} min after booking.", font=("Arial", 11, "italic"), text_color="#9a3412").pack(anchor="w", padx=15, pady=(2, 8))
+
+            ctk.CTkLabel(card, text=step['title'], font=("Arial", 13, "bold"), text_color="#1e293b").pack(anchor="w", padx=15, pady=(8, 0))
+            ctk.CTkLabel(card, text=step['desc'], font=("Arial", 12), text_color="#64748b").pack(anchor="w", padx=15, pady=(0, 8))
+
+        # =========================================================
+        # =========================================================
+        # PHẦN CUỐI: SYSTEM AUTO-COMMENT (ĐÓNG KHUNG CHUẨN UI)
+        # =========================================================
+        # Khung Card bo góc, màu nền xanh dương siêu nhạt, viền mỏng
+        # pady=(5, 20) giúp ép sát cái khung này lên phía trên, xóa bỏ khoảng trống thừa
+        comment_f = ctk.CTkFrame(win, fg_color="#f4f8ff", corner_radius=12, border_width=1, border_color="#dbeafe")
+        # Thêm thuộc tính side="top" để nó không bị rớt xuống đáy
+        comment_f.pack(side="top", fill="x", padx=30, pady=(5, 20), ipady=5) 
+        
+        # Tiêu đề System Auto-Comment (Thêm icon tia sét, đổi sang màu xanh đậm)
+        ctk.CTkLabel(comment_f, text="⚡ SYSTEM AUTO-COMMENT", font=("Arial", 12, "bold"), text_color="#2563eb").pack(anchor="w", padx=20, pady=(12, 0))
+        
+        # Thuật toán phân tích
+        avg_sys = 6.0
+        if vtat_val > avg_sys * 1.5:
+            diff = int(vtat_val - avg_sys)
+            # Thêm icon đồng hồ báo động cho trường hợp bị trễ
+            analysis = f"⏰ Elevated wait time ({int(vtat_val)} min). Driver took {diff} min longer than the {int(avg_sys)} min zone benchmark. This is a major risk factor."
+        else:
+            # Thêm icon check xanh cho trường hợp an toàn
+            analysis = "✅ Operational metrics are within safe system limits. No anomalies detected."
+            
+        # Nội dung nhận xét (Bỏ in nghiêng để dễ đọc hơn, căn lề chuẩn)
+        ctk.CTkLabel(comment_f, text=analysis, font=("Arial", 13), text_color="#475569", wraplength=440, justify="left").pack(anchor="w", padx=20, pady=(5, 12))
+
     # ==========================================
     # F4 - SMART COMPARE: SO SÁNH SONG SONG
     # ==========================================
