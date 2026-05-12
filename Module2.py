@@ -342,8 +342,6 @@ class RideManagementFrame(ctk.CTkFrame):
         # Các nút F4, F5 giữ nguyên
         self.btn_pattern = ctk.CTkButton(action_frame, text="📈 Find Common Patterns", command=self.f5_find_patterns, width=170, corner_radius=8, border_width=1)
         self.btn_pattern.pack(side="right", padx=4)
-        self.btn_compare = ctk.CTkButton(action_frame, text="↹ Compare 2 Rides", command=self.f4_compare_rides, width=140, corner_radius=8, border_width=1)
-        self.btn_compare.pack(side="right", padx=4)
 
     def toggle_quick_filter(self, filter_name):
         """
@@ -428,13 +426,10 @@ class RideManagementFrame(ctk.CTkFrame):
         selected_count = len(selected_items)
         
         if selected_count == 2:
-            self.btn_compare.configure(state="normal", fg_color="white", border_color="#bfdbfe", text_color="#2563eb")
             self.btn_pattern.configure(state="normal", fg_color="white", border_color="#e9d5ff", text_color="#9333ea")
         elif selected_count >= 3:
-            self.btn_compare.configure(state="disabled", fg_color="transparent", border_color="#e2e8f0", text_color="#94a3b8")
             self.btn_pattern.configure(state="normal", fg_color="white", border_color="#e9d5ff", text_color="#9333ea")
         else:
-            self.btn_compare.configure(state="disabled", fg_color="transparent", border_color="#e2e8f0", text_color="#94a3b8")
             self.btn_pattern.configure(state="disabled", fg_color="transparent", border_color="#e2e8f0", text_color="#94a3b8")
 
     def f1_reset_filters(self):
@@ -751,132 +746,204 @@ class RideManagementFrame(ctk.CTkFrame):
         ctk.CTkLabel(comment_f, text=analysis, font=("Arial", 13), text_color="#475569", wraplength=440, justify="left").pack(anchor="w", padx=20, pady=(5, 12))
 
     # ==========================================
-    # F4 - SMART COMPARE: SO SÁNH SONG SONG
-    # ==========================================
-    def f4_compare_rides(self):
-        """
-        So sánh 2 chuyến xe và tự động tô màu Đỏ/Xanh nếu các chỉ số lệch nhau > 20%
-        [CẬP NHẬT]: Điều chỉnh logic lấy dữ liệu do đã thêm cột Checkbox và đổi cách chọn.
-        """
-        # 1. Lấy danh sách các dòng đã được đánh dấu tích ☑ ở cột đầu tiên
-        selected = [item for item in self.table.get_children() if self.table.item(item)['values'][0] == '☑']
-        
-        # Chỉ thực hiện so sánh khi người dùng chọn đúng 2 dòng, nếu không thì dừng hàm
-        if len(selected) != 2: 
-            return
-            
-        # 2. Lấy giá trị (values) của 2 dòng được chọn
-        itemA = self.table.item(selected[0])['values']
-        itemB = self.table.item(selected[1])['values']
-        
-        # 3. Tạo cửa sổ popup mới
-        win = ctk.CTkToplevel(self)
-        win.title("Smart Ride Comparison")
-        win.geometry("650x450")
-        
-        # In tiêu đề 2 cột hiển thị (RIDE A và RIDE B)
-        ctk.CTkLabel(win, text="RIDE A", font=("Arial", 14, "bold"), text_color="#2563eb").grid(row=0, column=1, padx=20, pady=15)
-        ctk.CTkLabel(win, text="RIDE B", font=("Arial", 14, "bold"), text_color="#9333ea").grid(row=0, column=2, padx=20, pady=15)
-        
-        # 4. Danh sách các tiêu chí cần in ra để so sánh
-        metrics = ["Mã Chuyến", "Ngày giờ", "Tuyến đường", "Loại Xe", "Cước phí (Price)", "Thời gian đợi (VTAT)", "Trạng Thái"]
-        
-        import re # Thư viện hỗ trợ bóc tách số
-        
-        # Vòng lặp duyệt qua từng tiêu chí để in ra giao diện
-        for i, metric in enumerate(metrics):
-            # In tên tiêu chí ở cột đầu tiên (Cột 0) - Căn lề trái (sticky="w")
-            ctk.CTkLabel(win, text=metric, font=("Arial", 12, "bold"), text_color="#475569").grid(row=i+1, column=0, padx=20, pady=8, sticky="w")
-            
-            # [QUAN TRỌNG]: Lấy giá trị tương ứng từ itemA và itemB
-            # Phải cộng thêm 1 (i+1) vì vị trí số 0 hiện tại là cột Checkbox, dữ liệu thật bắt đầu từ vị trí số 1
-            valA, valB = str(itemA[i+1]), str(itemB[i+1])
-            colorA = colorB = "#0f172a" # Màu chữ mặc định là màu đen/xám đậm
-            
-            # 5. Logic highlight (tô màu) thông minh: Nếu chênh lệch > 20% cho Price và VTAT
-            if metric in ["Cước phí (Price)", "Thời gian đợi (VTAT)"]:
-                # Dùng thư viện regex (re) để bóc tách con số ra khỏi chuỗi (VD: "₹680" -> 680.0, "12m" -> 12.0)
-                numA = float(re.findall(r'\d+', valA)[0]) if re.findall(r'\d+', valA) else 0.0
-                numB = float(re.findall(r'\d+', valB)[0]) if re.findall(r'\d+', valB) else 0.0
-                
-                # Tính toán chênh lệch %
-                if numA > 0 and numB > 0:
-                    if numA > numB * 1.2: 
-                        colorA, colorB = "#ef4444", "#16a34a" # A cao hơn B > 20% -> A bị tô màu Đỏ (tệ), B Xanh (tốt)
-                    elif numB > numA * 1.2:
-                        colorA, colorB = "#16a34a", "#ef4444" # Ngược lại, B cao hơn A -> B Đỏ, A Xanh
-
-            # 6. In kết quả của Ride A và Ride B lên lưới grid (cột 1 và cột 2) cùng với màu sắc đã tính toán
-            ctk.CTkLabel(win, text=valA, text_color=colorA, font=("Arial", 12)).grid(row=i+1, column=1, padx=20, pady=8)
-            ctk.CTkLabel(win, text=valB, text_color=colorB, font=("Arial", 12)).grid(row=i+1, column=2, padx=20, pady=8)
-
-    # ==========================================
-    # ==========================================
-    # F5 - BULK PATTERN: PHÁT HIỆN ĐIỂM CHUNG
+# ==========================================
+    # F5 - SMART ANALYTICS: PHÂN TÍCH MẪU SỐ CHUNG (BẢN CHUẨN UI & LOGIC ĐA CHIỀU)
     # ==========================================
     def f5_find_patterns(self):
-        """
-        Giả lập thuật toán đếm (tương tự GROUP BY trong SQL) trên các chuyến xe được chọn để tìm ra quy luật (Pattern).
-        [CẬP NHẬT]: Điều chỉnh logic đếm dựa trên dấu tích Checkbox và cập nhật lại Index cột.
-        """
-        # 1. Lấy danh sách các dòng đã được đánh dấu tích ☑ ở cột đầu tiên (Cột CHỌN)
+        """Phân tích thống kê các chuyến xe được chọn với biểu đồ Bar Chart ngang Đa chiều và UI gọn gàng."""
+        from collections import Counter
+        from tkinter import messagebox
+
+        # 1. Lọc ra các dòng được tích checkbox
         selected = [item for item in self.table.get_children() if self.table.item(item)['values'][0] == '☑']
+        total_selected = len(selected)
         
-        # Nếu chưa chọn dòng nào thì không làm gì cả
-        if not selected: 
+        if total_selected == 0:
+            messagebox.showwarning("Selection Required", "Please select at least 1 ride to analyze!")
             return
             
-        # 2. Tạo cửa sổ popup mới
+        # 2. Truy xuất Database để lấy Full Data của các chuyến được chọn
+        ids = [str(self.table.item(item)['values'][1]).replace("#", "") for item in selected]
+        
+        conn = get_db_connection()
+        rows = []
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            format_strings = ','.join(['%s'] * len(ids))
+            cursor.execute(f"SELECT * FROM rides WHERE `Booking ID` IN ({format_strings})", tuple(ids))
+            rows = cursor.fetchall()
+            conn.close()
+
+        if not rows: return
+
+        # =========================================================================================
+        # 3. XỬ LÝ DỮ LIỆU LOGIC (NÂNG CẤP ĐA CHIỀU)
+        # =========================================================================================
+        status_counts = {'Completed': 0, 'Cancelled': 0, 'Incomplete': 0}
+        
+        # Bộ Counter chung cho mọi lý do sự cố (Cancelled và Incomplete)
+        interruption_reasons = Counter()
+        
+        hours_dist = {'Morning (06–12)': 0, 'Afternoon (12–17)': 0, 'Evening (17–21)': 0, 'Night (21–06)': 0}
+        pickup_zones = Counter()
+        vehicles = Counter()
+        payments = Counter()
+
+        for row in rows:
+            # --- Status Counts ---
+            status = str(row.get('Booking Status', ''))
+            if 'Completed' in status: status_counts['Completed'] += 1
+            elif 'Cancel' in status: status_counts['Cancelled'] += 1
+            else: status_counts['Incomplete'] += 1
+
+            # --- Logic "Bắt" Lý do Sự cố (ĐÃ GIỮ LẠI 'NOT APPLICABLE') ---
+            # Chỉ loại bỏ các ô thực sự trống hoặc lỗi rỗng
+            ignore_words = ["none", "nan", "null", ""]
+            
+            # Chỉ lấy lý do Cancel nếu trạng thái là Cancelled
+            if 'Cancel' in status:
+                c_reason = str(row.get('Reason for cancelling by Customer', '')).strip()
+                d_reason = str(row.get('Driver Cancellation Reason', '')).strip()
+                
+                if c_reason and c_reason.lower() not in ignore_words:
+                    interruption_reasons[f"[C] {c_reason}"] += 1
+                if d_reason and d_reason.lower() not in ignore_words:
+                    interruption_reasons[f"[D] {d_reason}"] += 1
+            
+            # Chỉ lấy lý do Incomplete nếu trạng thái là Incomplete
+            elif 'Completed' not in status:
+                i_reason = str(row.get('Incomplete Rides Reason', '')).strip()
+                if i_reason and i_reason.lower() not in ignore_words:
+                    interruption_reasons[f"[I] {i_reason}"] += 1
+
+            # --- Các phân tích khác ---
+            time_str = str(row.get('Time', '00:00'))
+            try:
+                hour = int(time_str.split(":")[0])
+                if 6 <= hour < 12: hours_dist['Morning (06–12)'] += 1
+                elif 12 <= hour < 17: hours_dist['Afternoon (12–17)'] += 1
+                elif 17 <= hour < 21: hours_dist['Evening (17–21)'] += 1
+                else: hours_dist['Night (21–06)'] += 1
+            except: pass
+
+            pickup = str(row.get('Pickup Location', 'Unknown'))
+            if pickup and pickup.lower() not in ignore_words: pickup_zones[pickup] += 1
+            
+            vehicle = str(row.get('Vehicle Type', 'Unknown'))
+            if vehicle and vehicle.lower() not in ignore_words: vehicles[vehicle] += 1
+            
+            payment = str(row.get('Payment Method', 'Unknown'))
+            if payment and payment.lower() not in ignore_words: payments[payment] += 1
+
+        # =========================================================================================
+        # 4. KHỞI TẠO GIAO DIỆN
+        # =========================================================================================
         win = ctk.CTkToplevel(self)
         win.title("Common Pattern Analysis")
-        win.geometry("500x400")
-        
-        # In tiêu đề số lượng chuyến xe đang được phân tích
-        ctk.CTkLabel(win, text=f"Phân tích nhanh {len(selected)} chuyến xe", font=("Arial", 16, "bold"), text_color="#0f172a").pack(pady=20)
-        
-        # 3. Khởi tạo các biến để lưu trữ số lượng đếm được
-        status_counts = {"Completed": 0, "Cancelled": 0, "Incomplete": 0} # Đếm trạng thái
-        vehicle_counts = {} # Đếm loại xe (Dùng dictionary rỗng vì có nhiều loại xe khác nhau)
-        
-        # 4. Vòng lặp duyệt qua từng dòng đã chọn để tiến hành đếm
-        for s in selected:
-            item = self.table.item(s)['values']
-            
-            # [QUAN TRỌNG]: Lấy dữ liệu với Index mới (Do đã chèn cột Checkbox vào vị trí số 0)
-            status = str(item[7])  # item[7] là cột Status
-            vehicle = str(item[4]) # item[4] là cột Vehicle
-            
-            # Đếm Trạng thái
-            if "Completed" in status: 
-                status_counts["Completed"] += 1
-            elif "Cancel" in status: 
-                status_counts["Cancelled"] += 1
-            else: 
-                status_counts["Incomplete"] += 1
-                
-            # Đếm Loại xe: Hàm .get(vehicle, 0) nghĩa là nếu xe này chưa có trong từ điển thì cho số đếm mặc định là 0, sau đó + 1
-            vehicle_counts[vehicle] = vehicle_counts.get(vehicle, 0) + 1
-            
-        # 5. Tìm phần tử phổ biến nhất (Loại xe được dùng nhiều nhất)
-        # Hàm max() kết hợp với tham số key=vehicle_counts.get sẽ lôi ra cái tên xe có số đếm lớn nhất
-        top_vehicle = max(vehicle_counts, key=vehicle_counts.get)
-        
-        # 6. Vẽ giao diện kết quả phân tích
-        # Tạo một cái khung trắng chứa kết quả
-        f = ctk.CTkFrame(win, fg_color="white", corner_radius=10, border_color="#e2e8f0", border_width=1)
-        f.pack(fill="x", padx=40, pady=10, ipady=10)
-        
-        # In các con số đếm được ra màn hình kèm màu sắc xanh/đỏ/cam cho trực quan
-        ctk.CTkLabel(f, text=f"• Hoàn thành: {status_counts['Completed']}", text_color="#16a34a", font=("Arial", 13, "bold")).pack(pady=5)
-        ctk.CTkLabel(f, text=f"• Bị Hủy: {status_counts['Cancelled']}", text_color="#ef4444", font=("Arial", 13, "bold")).pack(pady=5)
-        ctk.CTkLabel(f, text=f"• Sự cố: {status_counts['Incomplete']}", text_color="#f97316", font=("Arial", 13, "bold")).pack(pady=5)
-        
-        # 7. Câu kết luận tự động của hệ thống
-        conclusion = f"Hệ thống phát hiện quy luật: Trong tập dữ liệu này, loại xe được sử dụng nhiều nhất là '{top_vehicle}' ({vehicle_counts[top_vehicle]}/{len(selected)} chuyến)."
-        
-        ctk.CTkLabel(win, text="SYSTEM CONCLUSION", font=("Arial", 12, "bold"), text_color="#9333ea").pack(pady=(20, 5))
-        ctk.CTkLabel(win, text=conclusion, wraplength=400, text_color="#475569").pack()
+        # FIX CỬA SỔ: Set cứng cả ngang lẫn dọc để hiển thị đẹp nhất
+        win.geometry("550x750") 
+        win.configure(fg_color="#ffffff")
+        win.attributes('-topmost', True)
 
+        scroll_f = ctk.CTkScrollableFrame(win, fg_color="transparent")
+        scroll_f.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # --- HEADER ---
+        header_f = ctk.CTkFrame(scroll_f, fg_color="transparent")
+        header_f.pack(fill="x", padx=15, pady=(5, 10))
+        ctk.CTkLabel(header_f, text="📊 Common Pattern Analysis", font=("Arial", 18, "bold"), text_color="#0f172a").pack(anchor="w")
+        ctk.CTkLabel(header_f, text=f"{total_selected} ride(s) selected for analysis", font=("Arial", 12), text_color="#64748b").pack(anchor="w")
+        ctk.CTkFrame(header_f, height=1, width=480, fg_color="#e2e8f0").pack(anchor="w", pady=(10, 0))
+
+        # --- 3 BOX STATUS ---
+        status_f = ctk.CTkFrame(scroll_f, fg_color="transparent")
+        status_f.pack(fill="x", padx=15, pady=(0, 15))
+        
+        boxes = [
+            ("Completed", status_counts['Completed'], "#ecfdf5", "#a7f3d0", "#059669"),
+            ("Cancelled", status_counts['Cancelled'], "#fef2f2", "#fecaca", "#dc2626"),
+            ("Incomplete", status_counts['Incomplete'], "#fffbeb", "#fde68a", "#d97706")
+        ]
+        
+        for i, (title, count, bg, border, text_col) in enumerate(boxes):
+            status_f.columnconfigure(i, weight=1)
+            box = ctk.CTkFrame(status_f, fg_color=bg, border_width=1, border_color=border, corner_radius=10)
+            box.grid(row=0, column=i, padx=4, sticky="ew")
+            
+            # FIX SỐ 002: Trả lại số nguyên thủy (str(count))
+            ctk.CTkLabel(box, text=str(count), font=("Arial", 22, "bold"), text_color=text_col).pack(pady=(15, 0))
+            ctk.CTkLabel(box, text=title, font=("Arial", 11), text_color="#64748b").pack(pady=(0, 15))
+
+        # =========================================================================================
+        # --- HÀM VẼ BIỂU ĐỒ BAR CHART ---
+        # =========================================================================================
+        def draw_bar_section(parent, title, icon, color, data_dict, is_counter=True):
+            sec_f = ctk.CTkFrame(parent, fg_color="transparent")
+            sec_f.pack(fill="x", padx=15, pady=(5, 10))
+            
+            title_f = ctk.CTkFrame(sec_f, fg_color="transparent")
+            title_f.pack(fill="x", pady=(0, 5))
+            ctk.CTkLabel(title_f, text=f"{icon} {title.upper()}", font=("Arial", 11, "bold"), text_color=color).pack(side="left")
+
+            items = data_dict.most_common() if is_counter else list(data_dict.items())
+            if not items:
+                ctk.CTkLabel(sec_f, text="No data available.", font=("Arial", 11, "italic"), text_color="#94a3b8").pack(anchor="w", padx=10)
+                return
+
+            for key, val in items:
+                pct = int((val / total_selected) * 100) if total_selected > 0 else 0
+                
+                row_f = ctk.CTkFrame(sec_f, fg_color="transparent")
+                row_f.pack(fill="x", pady=0)
+                
+                ctk.CTkLabel(row_f, text=str(key), font=("Arial", 11), text_color="#334155").pack(side="left", padx=(5, 0))
+                ctk.CTkLabel(row_f, text=f"{val} rides ({pct}%)", font=("Arial", 11, "bold"), text_color=color).pack(side="right")
+                
+                bar_bg = ctk.CTkFrame(sec_f, height=6, fg_color="#f1f5f9", corner_radius=3)
+                bar_bg.pack(fill="x", padx=(5, 0), pady=(1, 5))
+                
+                if pct > 0:
+                    bar_fill = ctk.CTkFrame(bar_bg, height=6, fg_color=color, corner_radius=3)
+                    bar_fill.place(relx=0, rely=0, relwidth=pct/100, relheight=1)
+
+        # =========================================================================================
+        # --- VẼ CÁC BIỂU ĐỒ ---
+        # =========================================================================================
+        if interruption_reasons:
+            draw_bar_section(scroll_f, "Interruption Reasons (Cancel/Incomplete)", "⚠️", "#dc2626", interruption_reasons)
+        
+        draw_bar_section(scroll_f, "Peak Hours Distribution", "🕒", "#eab308", hours_dist, is_counter=False)
+        draw_bar_section(scroll_f, "Common Pickup Zones", "📍", "#10b981", pickup_zones)
+        draw_bar_section(scroll_f, "Vehicle Type Distribution", "🚗", "#3b82f6", vehicles)
+        draw_bar_section(scroll_f, "Payment Method", "💳", "#8b5cf6", payments)
+
+        # =========================================================
+# =========================================================
+        # --- KẾT LUẬN TỰ ĐỘNG ---
+        # =========================================================
+        conclusion_f = ctk.CTkFrame(scroll_f, fg_color="#f4f8ff", corner_radius=12, border_width=1, border_color="#dbeafe")
+        conclusion_f.pack(side="top", fill="x", padx=15, pady=(5, 15), ipady=5) 
+        
+        # Tăng lề trái padx=20
+        ctk.CTkLabel(conclusion_f, text="⚡ SYSTEM CONCLUSION", font=("Arial", 11, "bold"), text_color="#2563eb").pack(anchor="w", padx=20, pady=(10, 2))
+
+        cancel_rate = int(((status_counts['Cancelled'] + status_counts['Incomplete']) / total_selected) * 100) if total_selected > 0 else 0
+        top_zone = pickup_zones.most_common(1)[0][0] if pickup_zones else "Unknown"
+        top_vehicle = vehicles.most_common(1)[0][0] if vehicles else "Unknown"
+        top_hour = max(hours_dist, key=hours_dist.get) if any(hours_dist.values()) else "Unknown"
+
+        conclusion_text = f"Analysis of {total_selected} selected ride(s): Failure rate (Cancel/Incomplete) is at {cancel_rate}%. "
+        
+        if interruption_reasons:
+            top_reason = interruption_reasons.most_common(1)[0][0]
+            conclusion_text += f"Primary anomaly pattern detected: '{top_reason}'. "
+            
+        conclusion_text += f"Peak demand window is {top_hour}. Most frequent pickup zone: {top_zone}. Dominant vehicle type: {top_vehicle}. "
+        conclusion_text += "Action: Review operational metrics and allocation in high-demand zones to optimize performance."
+
+        # FIX LỖI CẮT CHỮ: Giảm wraplength xuống 450, tăng padx lên 20 để tạo không gian thở
+        ctk.CTkLabel(conclusion_f, text=conclusion_text, font=("Arial", 12), text_color="#475569", wraplength=450, justify="left").pack(anchor="w", padx=20, pady=(0, 10))
+                        
 # ================= 3. KHUNG MAIN APP =================
 class App(ctk.CTk):
     def __init__(self):
