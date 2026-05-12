@@ -919,18 +919,21 @@ class RideManagementFrame(ctk.CTkFrame):
 
         # =========================================================
 # =========================================================
+# =========================================================
         # --- KẾT LUẬN TỰ ĐỘNG ---
         # =========================================================
         conclusion_f = ctk.CTkFrame(scroll_f, fg_color="#f4f8ff", corner_radius=12, border_width=1, border_color="#dbeafe")
         conclusion_f.pack(side="top", fill="x", padx=15, pady=(5, 15), ipady=5) 
         
-        # Tăng lề trái padx=20
         ctk.CTkLabel(conclusion_f, text="⚡ SYSTEM CONCLUSION", font=("Arial", 11, "bold"), text_color="#2563eb").pack(anchor="w", padx=20, pady=(10, 2))
 
         cancel_rate = int(((status_counts['Cancelled'] + status_counts['Incomplete']) / total_selected) * 100) if total_selected > 0 else 0
         top_zone = pickup_zones.most_common(1)[0][0] if pickup_zones else "Unknown"
         top_vehicle = vehicles.most_common(1)[0][0] if vehicles else "Unknown"
         top_hour = max(hours_dist, key=hours_dist.get) if any(hours_dist.values()) else "Unknown"
+        
+        # Bổ sung biến lấy phương thức thanh toán phổ biến nhất
+        top_payment = payments.most_common(1)[0][0] if payments else "Unknown"
 
         conclusion_text = f"Analysis of {total_selected} selected ride(s): Failure rate (Cancel/Incomplete) is at {cancel_rate}%. "
         
@@ -938,12 +941,12 @@ class RideManagementFrame(ctk.CTkFrame):
             top_reason = interruption_reasons.most_common(1)[0][0]
             conclusion_text += f"Primary anomaly pattern detected: '{top_reason}'. "
             
-        conclusion_text += f"Peak demand window is {top_hour}. Most frequent pickup zone: {top_zone}. Dominant vehicle type: {top_vehicle}. "
+        # Chèn thêm "Preferred payment method: {top_payment}." vào đây
+        conclusion_text += f"Peak demand window is {top_hour}. Most frequent pickup zone: {top_zone}. Dominant vehicle type: {top_vehicle}. Preferred payment method: {top_payment}. "
         conclusion_text += "Action: Review operational metrics and allocation in high-demand zones to optimize performance."
 
-        # FIX LỖI CẮT CHỮ: Giảm wraplength xuống 450, tăng padx lên 20 để tạo không gian thở
         ctk.CTkLabel(conclusion_f, text=conclusion_text, font=("Arial", 12), text_color="#475569", wraplength=450, justify="left").pack(anchor="w", padx=20, pady=(0, 10))
-                        
+                                
 # ================= 3. KHUNG MAIN APP =================
 class App(ctk.CTk):
     def __init__(self):
